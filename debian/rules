@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DENABLE_LYD_PRIV=ON -DGEN_LANGUAGE_BINDINGS=ON -DGEN_PYTHON_VERSION=2
+
+override_dh_makeshlibs:
+	dh_makeshlibs -Xextensions -Xuser_types
+
+override_dh_auto_test:
+	ctest --output-on-failure
