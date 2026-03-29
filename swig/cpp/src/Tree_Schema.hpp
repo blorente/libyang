@@ -683,8 +683,12 @@ public:
     ~Schema_Node_Leaf();
     /** get backlinks variable from [lys_node_leaf](@ref lys_node_leaf)*/
     S_Set backlinks();
+    /** get must_size variable from [lys_node_leaf](@ref lys_node_leaf)*/
+    uint8_t must_size() {return ((struct lys_node_leaf *)node)->must_size;};
     /** get when variable from [lys_node_leaf](@ref lys_node_leaf)*/
     S_When when();
+    /** get must variable from [lys_node_leaf](@ref lys_node_leaf)*/
+    std::vector<S_Restr> must();
     /** get type variable from [lys_node_leaf](@ref lys_node_leaf)*/
     S_Type type();
     /** get units variable from [lys_node_leaf](@ref lys_node_leaf)*/
