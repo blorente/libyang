@@ -436,3 +436,6 @@ endif(ENABLE_BUILD_FUZZ_TARGETS)
 if(GEN_LANGUAGE_BINDINGS AND GEN_CPP_BINDINGS)
     add_subdirectory(swig)
 endif()
+
+#Enable large file support for 32-bit arch
+add_definitions(-D_FILE_OFFSET_BITS=64)
