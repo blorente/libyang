@@ -1,0 +1,23 @@
+module(name = "libyang", version = "1.0.73")
+
+bazel_dep(name = "rules_cc", version = "0.2.10")
+bazel_dep(name = "rules_distroless", version = "0.0.0", repo_name = "rules_deb")
+local_path_override(
+    module_name = "rules_distroless",
+    path = "../rules_distroless",
+)
+
+# Get pcre from Debian bookworm (libyang v1 uses PCRE, not PCRE2)
+apt = use_extension("@rules_deb//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = ["amd64"],
+    components = ["main"],
+    suites = ["bookworm"],
+    uris = ["https://snapshot.debian.org/archive/debian/20251001T023456Z"],
+)
+apt.install(
+    dependency_set = "libyang_deps",
+    suites = ["bookworm"],
+    packages = ["libpcre3-dev"],
+)
+use_repo(apt, "libyang_deps")

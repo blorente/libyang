@@ -1,0 +1,280 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+# -- Generated headers from CMake templates --
+
+# debian/rules configures with: -DENABLE_LYD_PRIV=ON
+# TODO(bazel-ready): Make options configurable if we need to.
+genrule(
+    name = "libyang_h",
+    srcs = ["src/libyang.h.in"],
+    outs = ["src/libyang.h"],
+    cmd = """
+        sed -e 's/#cmakedefine LY_ENABLED_CACHE/#define LY_ENABLED_CACHE/' \
+            -e 's/#cmakedefine LY_ENABLED_LATEST_REVISIONS/#define LY_ENABLED_LATEST_REVISIONS/' \
+            -e 's/#cmakedefine LY_ENABLED_LYD_PRIV/#define LY_ENABLED_LYD_PRIV/' \
+            -e 's/@COMPILER_PACKED_ATTR@/__attribute__((__packed__))/' \
+            -e 's/@LIBYANG_MAJOR_SOVERSION@/1/' \
+            -e 's/@LIBYANG_MINOR_SOVERSION@/2/' \
+            -e 's/@LIBYANG_MICRO_SOVERSION@/2/' \
+            -e 's/@LIBYANG_SOVERSION_FULL@/1.2.2/' \
+            $(SRCS) > $@
+    """,
+)
+
+# common.h: internal header with compiler attributes
+# TODO(bazel-ready): Support other compilers
+#                    These attributes are compiler-dependent. Our toolchain is gcc for now, but we should make this configurable to support clang as well.
+genrule(
+    name = "common_h",
+    srcs = ["src/common.h.in"],
+    outs = ["src/common.h"],
+    cmd = """
+        sed -e 's/@COMPILER_UNUSED_ATTR@/UNUSED_ ## x __attribute__((__unused__))/' \
+            $(SRCS) > $@
+    """,
+)
+
+# plugin_config.h: plugin directory paths (non-STATIC build, so only the #defines matter)
+# TODO(bazel-ready): Configure for static builds.
+#                    We set a bunch of these configurations to empty, because they are in the `#ifdef STATIC` block,
+#                    which is always false for our build.
+#                    If we even need to build a static libyang for distribution, we'll have to fix these configurations.
+# TODO(bazel-ready): Parameterize by architecture. Currently, x86_64-linux-gnu is hardcoded into the paths.
+# TODO(bazel-ready): Read plugins via runfiles, for testing.
+genrule(
+    name = "plugin_config_h",
+    srcs = ["src/plugin_config.h.in"],
+    outs = ["src/plugin_config.h"],
+    cmd = """
+        sed -e 's|@EXTENSIONS_PLUGINS_DIR_MACRO@|/usr/lib/x86_64-linux-gnu/libyang/extensions|' \
+            -e 's|@USER_TYPES_PLUGINS_DIR_MACRO@|/usr/lib/x86_64-linux-gnu/libyang/user_types|' \
+            -e 's/@EXTERN_EXTENSIONS_LIST@//' \
+            -e 's/@EXTERN_USER_TYPE_LIST@//' \
+            -e 's/@EXTENSIONS_LIST_SIZE@//' \
+            -e 's/@USER_TYPE_LIST_SIZE@//' \
+            -e 's/@MEMCPY_EXTENSIONS_LIST@//' \
+            -e 's/@MEMCPY_USER_TYPE_LIST@//' \
+            -e 's/@STATIC_LOADED_PLUGINS_COUNT@//' \
+            -e 's/@STATIC_LOADED_PLUGINS@//' \
+            $(SRCS) > $@
+    """,
+)
+
+cc_library(
+    name = "public_headers",
+    hdrs = [
+        "src/dict.h",
+        "src/extensions.h",
+        "src/tree_data.h",
+        "src/tree_schema.h",
+        "src/user_types.h",
+        "src/xml.h",
+        ":libyang_h",
+    ],
+    strip_include_prefix = "src",
+    include_prefix = "libyang",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "libyang",
+    srcs = [
+        "src/common.c",
+        "src/context.c",
+        "src/hash_table.c",
+        "src/log.c",
+        "src/parser.c",
+        "src/parser_json.c",
+        "src/parser_lyb.c",
+        "src/parser_xml.c",
+        "src/parser_yang.c",
+        "src/parser_yang_bis.c",
+        "src/parser_yang_lex.c",
+        "src/parser_yin.c",
+        "src/plugins.c",
+        "src/printer.c",
+        "src/printer_info.c",
+        "src/printer_json.c",
+        "src/printer_json_schema.c",
+        "src/printer_lyb.c",
+        "src/printer_tree.c",
+        "src/printer_xml.c",
+        "src/printer_yang.c",
+        "src/printer_yin.c",
+        "src/resolve.c",
+        "src/tree_data.c",
+        "src/tree_schema.c",
+        "src/validation.c",
+        "src/xml.c",
+        "src/xpath.c",
+        "src/yang_types.c",
+
+        # Generated headers (used as srcs since they are internal)
+        ":common_h",
+        ":plugin_config_h",
+    ],
+    hdrs = glob([
+        "src/*.h",
+        "models/*.h",
+    ], exclude = [
+        "src/libyang.h",  # generated
+        "src/common.h",  # generated
+        "src/plugin_config.h",  # generated
+    ]),
+    includes = [
+        "src",
+    ],
+    copts = [
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-fvisibility=hidden",
+        "-fPIC",
+    ],
+    local_defines = [
+        "_GNU_SOURCE",
+        "_FILE_OFFSET_BITS=64",
+    ],
+    linkopts = [
+        "-lm",
+        "-ldl",
+        "-lpthread",
+    ],
+    deps = [
+        ":public_headers",
+        "@libyang_deps//libpcre3-dev:libpcre3",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# -- Shared library for runtime use --
+
+cc_shared_library(
+    name = "libyang_shared",
+    deps = [":libyang"],
+    visibility = ["//visibility:public"],
+)
+
+# -- Extension plugins (shared objects loaded at runtime) --
+
+[cc_library(
+    name = "ext_%s" % ext,
+    srcs = ["src/extensions/%s.c" % ext],
+    copts = [
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-fPIC",
+    ],
+    deps = [":libyang"],
+    visibility = ["//visibility:public"],
+) for ext in [
+    "nacm",
+    "metadata",
+    "yangdata",
+]]
+
+# -- User type plugins (shared objects loaded at runtime) --
+
+[cc_library(
+    name = "utype_%s" % utype,
+    srcs = ["src/user_types/%s.c" % utype],
+    copts = [
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-fPIC",
+    ],
+    deps = [":libyang"],
+    visibility = ["//visibility:public"],
+) for utype in [
+    "user_yang_types",
+    "user_inet_types",
+]]
+
+# -- CLI tools --
+
+cc_binary(
+    name = "yanglint",
+    srcs = [
+        "tools/lint/main.c",
+        "tools/lint/main_ni.c",
+        "tools/lint/commands.c",
+        "tools/lint/completion.c",
+        "tools/lint/configuration.c",
+        "linenoise/linenoise.c",
+    ] + glob(["tools/lint/*.h", "linenoise/*.h"]),
+    copts = [
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+    ],
+    local_defines = ["_GNU_SOURCE"],
+    deps = [":libyang"],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "yangre",
+    srcs = ["tools/re/main.c"],
+    copts = [
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+    ],
+    local_defines = ["_GNU_SOURCE"],
+    deps = [":libyang"],
+    visibility = ["//visibility:public"],
+)
+
+# -- C++ bindings: libyang-cpp --
+# Matches the libyang-cpp debian package
+
+cc_library(
+    name = "libyang-cpp",
+    srcs = [
+        "swig/cpp/src/Internal.cpp",
+        "swig/cpp/src/Libyang.cpp",
+        "swig/cpp/src/Tree_Data.cpp",
+        "swig/cpp/src/Tree_Schema.cpp",
+        "swig/cpp/src/Xml.cpp",
+    ],
+    hdrs = [
+        "swig/cpp/src/Internal.hpp",
+        "swig/cpp/src/Libyang.hpp",
+        "swig/cpp/src/Tree_Data.hpp",
+        "swig/cpp/src/Tree_Schema.hpp",
+        "swig/cpp/src/Xml.hpp",
+    ],
+    includes = ["swig/cpp/src"],
+    copts = [
+        "-std=c++11",
+        "-Wall",
+        "-Wextra",
+        "-fPIC",
+    ],
+    deps = [":libyang"],
+    visibility = ["//visibility:public"],
+)
+
+# -- C++ public headers (for libyang-cpp-dev package) --
+
+cc_library(
+    name = "cpp_public_headers",
+    hdrs = [
+        "swig/cpp/src/Internal.hpp",
+        "swig/cpp/src/Libyang.hpp",
+        "swig/cpp/src/Tree_Data.hpp",
+        "swig/cpp/src/Tree_Schema.hpp",
+        "swig/cpp/src/Xml.hpp",
+    ],
+    strip_include_prefix = "swig/cpp/src",
+    include_prefix = "libyang",
+    visibility = ["//visibility:public"],
+)
+
+# -- Python bindings --
+# TODO BL: Requires SWIG to generate the wrapper code.
+# The python3-yang debian package is built via SWIG from swig/python/.
+# To replicate this in Bazel, a custom rule similar to sdist_build_from_src
+# would be needed. Left as a placeholder.
