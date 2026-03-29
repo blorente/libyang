@@ -9,10 +9,14 @@ export DH_VERBOSE=1
 override_dh_strip:
 	dh_strip -plibyang@PACKAGE_PART_NAME@  --dbg-package=libyang@PACKAGE_PART_NAME@-dbg
 	dh_strip -plibyang-cpp@PACKAGE_PART_NAME@ --dbg-package=libyang-cpp@PACKAGE_PART_NAME@-dbg
+	#dh_strip -ppython2-yang@PACKAGE_PART_NAME@ --dbg-package=python2-yang@PACKAGE_PART_NAME@-dbg
 	dh_strip -ppython3-yang@PACKAGE_PART_NAME@ --dbg-package=python3-yang@PACKAGE_PART_NAME@-dbg
 
 override_dh_auto_configure:
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE:String="@BUILD_TYPE@" -DGEN_LANGUAGE_BINDINGS=ON .
+	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE:String="@BUILD_TYPE@" -DENABLE_LYD_PRIV=ON -DGEN_LANGUAGE_BINDINGS=ON -DGEN_PYTHON_VERSION=2 .
+
+override_dh_makeshlibs:
+	dh_makeshlibs -Xextensions -Xuser_types
 
 override_dh_auto_test:
 	ctest --output-on-failure
