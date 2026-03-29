@@ -842,7 +842,7 @@ error:
     return ret;
 }
 
-int
+API int
 lyd_check_mandatory_tree(struct lyd_node *root, struct ly_ctx *ctx, const struct lys_module **modules, int mod_count,
                          int options)
 {
