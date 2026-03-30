@@ -4,6 +4,7 @@ load("//:build_constants.bzl", "CPP_SWIG_HEADERS", "EXTENSIONS_PLUGINS_DIR", "IN
 load("//:pkg_path.bzl", "pkg_path")
 load("@sonic_build_infra//swig:defs.bzl", "swig_gen", "swig_lib_deb")
 load("@sonic_build_infra//python:py_native_library.bzl", "py_native_library")
+load("@sonic_build_infra//tar:assert_tar.bzl", "assert_tar")
 
 # All public headers (non-generated + generated libyang.h).
 # Used by both cc_library and the libyang-dev tar package.
@@ -265,6 +266,12 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_shared_library(
+    name = "libyang-cpp_shared",
+    deps = [":libyang-cpp"],
+    visibility = ["//visibility:public"],
+)
+
 # -- C++ public headers (for libyang-cpp-dev package) --
 
 cc_library(
@@ -358,8 +365,6 @@ genrule(
 
 # -- deb packages --
 
-# libyang: runtime package
-# Contents: yanglint, yangre, man pages, shared library, extension/user_type plugins
 # TODO(bazel-ready): Add manual pages for yanglint and yangre
 tar(
     name = "libyang_pkg",
@@ -371,19 +376,19 @@ tar(
         ":utype_%s" % utype for utype in USER_TYPE_PLUGINS
     ],
     mtree = [
-        "./usr/bin/yanglint uid=0 gid=0 mode=0755 type=file content=$(location :yanglint)",
-        "./usr/bin/yangre uid=0 gid=0 mode=0755 type=file content=$(location :yangre)",
-        pkg_path(".{prefix}/{libdir}/libyang.so.{soversion_full} uid=0 gid=0 mode=0755 type=file content=$(location :libyang_shared)"),
-        pkg_path(".{prefix}/{libdir}/libyang.so.{soversion_major} uid=0 gid=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
+        "./usr/bin/yanglint uid=0 gid=0 time=0 mode=0755 type=file content=$(location :yanglint)",
+        "./usr/bin/yangre uid=0 gid=0 time=0 mode=0755 type=file content=$(location :yangre)",
+        pkg_path(".{prefix}/{libdir}/libyang.so.{soversion_full} uid=0 gid=0 time=0 mode=0755 type=file content=$(location :libyang_shared)"),
+        pkg_path(".{prefix}/{libdir}/libyang.so.{soversion_major} uid=0 gid=0 time=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
     ] + [
         pkg_path(
-            ".{prefix}/{libdir}/libyang/extensions/{ext}.so uid=0 gid=0 mode=0755 type=file content=$(location :ext_{ext})",
+            ".{prefix}/{libdir}/libyang/extensions/{ext}.so uid=0 gid=0 time=0 mode=0755 type=file content=$(location :ext_{ext})",
             ext = ext,
         )
         for ext in EXTENSION_PLUGINS
     ] + [
         pkg_path(
-            ".{prefix}/{libdir}/libyang/user_types/{utype}.so uid=0 gid=0 mode=0755 type=file content=$(location :utype_{utype})",
+            ".{prefix}/{libdir}/libyang/user_types/{utype}.so uid=0 gid=0 time=0 mode=0755 type=file content=$(location :utype_{utype})",
             utype = utype,
         )
         for utype in USER_TYPE_PLUGINS
@@ -391,8 +396,6 @@ tar(
     visibility = ["//visibility:public"],
 )
 
-# libyang-dev: development package
-# Contents: unversioned .so symlink, pkg-config file, public headers
 tar(
     name = "libyang-dev_pkg",
     srcs = [
@@ -401,23 +404,21 @@ tar(
         ":libyang_h",
     ],
     mtree = [
-        pkg_path(".{prefix}/{libdir}/libyang.so uid=0 gid=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
-        pkg_path(".{prefix}/{libdir}/pkgconfig/libyang.pc uid=0 gid=0 mode=0644 type=file content=$(location :libyang_pc)"),
+        pkg_path(".{prefix}/{libdir}/libyang.so uid=0 gid=0 time=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
+        pkg_path(".{prefix}/{libdir}/pkgconfig/libyang.pc uid=0 gid=0 time=0 mode=0644 type=file content=$(location :libyang_pc)"),
     ] + [
         pkg_path(
-            ".{prefix}/{includedir}/libyang/{hdr} uid=0 gid=0 mode=0644 type=file content=$(location {src})",
+            ".{prefix}/{includedir}/libyang/{hdr} uid=0 gid=0 time=0 mode=0644 type=file content=$(location {src})",
             hdr = hdr.split("/")[-1],
             src = hdr,
         )
         for hdr in PUBLIC_HEADERS
     ] + [
-        pkg_path(".{prefix}/{includedir}/libyang/libyang.h uid=0 gid=0 mode=0644 type=file content=$(location :libyang_h)"),
+        pkg_path(".{prefix}/{includedir}/libyang/libyang.h uid=0 gid=0 time=0 mode=0644 type=file content=$(location :libyang_h)"),
     ],
     visibility = ["//visibility:public"],
 )
 
-# python3-yang: Python bindings package
-# Contents: SWIG-generated yang.py and _yang.so
 tar(
     name = "python3-yang_pkg",
     srcs = [
@@ -425,8 +426,42 @@ tar(
         "swig/python/yang.py",
     ],
     mtree = [
-        "./usr/lib/python3/dist-packages/_yang.so uid=0 gid=0 mode=0755 type=file content=$(location :_yang_swig_lib)",
-        "./usr/lib/python3/dist-packages/yang.py uid=0 gid=0 mode=0644 type=file content=$(location swig/python/yang.py)",
+        "./usr/lib/python3/dist-packages/_yang.so uid=0 gid=0 time=0 mode=0755 type=file content=$(location :_yang_swig_lib)",
+        "./usr/lib/python3/dist-packages/yang.py uid=0 gid=0 time=0 mode=0644 type=file content=$(location swig/python/yang.py)",
     ],
     visibility = ["//visibility:public"],
+)
+
+tar(
+    name = "libyang-cpp_pkg",
+    srcs = [":libyang-cpp_shared"],
+    mtree = [
+        pkg_path(".{prefix}/{libdir}/libyang-cpp.so.{soversion_full} uid=0 gid=0 time=0 mode=0755 type=file content=$(location :libyang-cpp_shared)"),
+        pkg_path(".{prefix}/{libdir}/libyang-cpp.so.{soversion_major} uid=0 gid=0 time=0 mode=0755 type=link link=libyang-cpp.so.{soversion_full}"),
+    ],
+    visibility = ["//visibility:public"],
+)
+
+assert_tar(
+    name = "libyang_pkg_test",
+    tar = ":libyang_pkg",
+    expected = "bazel_tests/libyang_pkg.expected.txt",
+)
+
+assert_tar(
+    name = "libyang-dev_pkg_test",
+    tar = ":libyang-dev_pkg",
+    expected = "bazel_tests/libyang-dev_pkg.expected.txt",
+)
+
+assert_tar(
+    name = "python3-yang_pkg_test",
+    tar = ":python3-yang_pkg",
+    expected = "bazel_tests/python3-yang_pkg.expected.txt",
+)
+
+assert_tar(
+    name = "libyang-cpp_pkg_test",
+    tar = ":libyang-cpp_pkg",
+    expected = "bazel_tests/libyang-cpp_pkg.expected.txt",
 )
