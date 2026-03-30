@@ -1,4 +1,29 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@tar.bzl//:tar.bzl", "tar")
+
+# Project metadata from CMakeLists.txt.
+LIBYANG_DESCRIPTION = "libyang is YANG data modelling language parser and toolkit written (and providing API) in C."
+
+# Version constants from CMakeLists.txt.
+# LIBYANG_VERSION is the project release version.
+# LIBYANG_SOVERSION_FULL is the shared library ABI version (used for .so naming).
+LIBYANG_VERSION = "1.0.73"
+LIBYANG_MAJOR_SOVERSION = "1"
+LIBYANG_MINOR_SOVERSION = "2"
+LIBYANG_MICRO_SOVERSION = "2"
+LIBYANG_SOVERSION_FULL = LIBYANG_MAJOR_SOVERSION + "." + LIBYANG_MINOR_SOVERSION + "." + LIBYANG_MICRO_SOVERSION
+
+# Install paths from CMakeLists.txt and GNUInstallDirs defaults on Debian.
+# TODO(bazel-ready): Parameterize INSTALL_LIBDIR by architecture to support aarch64
+#   (lib/x86_64-linux-gnu vs lib/aarch64-linux-gnu).
+INSTALL_PREFIX = "/usr"
+INSTALL_INCLUDEDIR = "include"
+INSTALL_LIBDIR = "lib/x86_64-linux-gnu"
+
+# Plugin directories from CMakeLists.txt.
+PLUGINS_DIR = INSTALL_PREFIX + "/" + INSTALL_LIBDIR + "/libyang"
+EXTENSIONS_PLUGINS_DIR = PLUGINS_DIR + "/extensions"
+USER_TYPES_PLUGINS_DIR = PLUGINS_DIR + "/user_types"
 
 # -- Generated headers from CMake templates --
 
@@ -13,12 +38,17 @@ genrule(
             -e 's/#cmakedefine LY_ENABLED_LATEST_REVISIONS/#define LY_ENABLED_LATEST_REVISIONS/' \
             -e 's/#cmakedefine LY_ENABLED_LYD_PRIV/#define LY_ENABLED_LYD_PRIV/' \
             -e 's/@COMPILER_PACKED_ATTR@/__attribute__((__packed__))/' \
-            -e 's/@LIBYANG_MAJOR_SOVERSION@/1/' \
-            -e 's/@LIBYANG_MINOR_SOVERSION@/2/' \
-            -e 's/@LIBYANG_MICRO_SOVERSION@/2/' \
-            -e 's/@LIBYANG_SOVERSION_FULL@/1.2.2/' \
+            -e 's/@LIBYANG_MAJOR_SOVERSION@/{major}/' \
+            -e 's/@LIBYANG_MINOR_SOVERSION@/{minor}/' \
+            -e 's/@LIBYANG_MICRO_SOVERSION@/{micro}/' \
+            -e 's/@LIBYANG_SOVERSION_FULL@/{full}/' \
             $(SRCS) > $@
-    """,
+    """.format(
+        major = LIBYANG_MAJOR_SOVERSION,
+        minor = LIBYANG_MINOR_SOVERSION,
+        micro = LIBYANG_MICRO_SOVERSION,
+        full = LIBYANG_SOVERSION_FULL,
+    ),
 )
 
 # common.h: internal header with compiler attributes
@@ -39,15 +69,14 @@ genrule(
 #                    We set a bunch of these configurations to empty, because they are in the `#ifdef STATIC` block,
 #                    which is always false for our build.
 #                    If we even need to build a static libyang for distribution, we'll have to fix these configurations.
-# TODO(bazel-ready): Parameterize by architecture. Currently, x86_64-linux-gnu is hardcoded into the paths.
 # TODO(bazel-ready): Read plugins via runfiles, for testing.
 genrule(
     name = "plugin_config_h",
     srcs = ["src/plugin_config.h.in"],
     outs = ["src/plugin_config.h"],
     cmd = """
-        sed -e 's|@EXTENSIONS_PLUGINS_DIR_MACRO@|/usr/lib/x86_64-linux-gnu/libyang/extensions|' \
-            -e 's|@USER_TYPES_PLUGINS_DIR_MACRO@|/usr/lib/x86_64-linux-gnu/libyang/user_types|' \
+        sed -e 's|@EXTENSIONS_PLUGINS_DIR_MACRO@|{ext_dir}|' \
+            -e 's|@USER_TYPES_PLUGINS_DIR_MACRO@|{utype_dir}|' \
             -e 's/@EXTERN_EXTENSIONS_LIST@//' \
             -e 's/@EXTERN_USER_TYPE_LIST@//' \
             -e 's/@EXTENSIONS_LIST_SIZE@//' \
@@ -57,7 +86,10 @@ genrule(
             -e 's/@STATIC_LOADED_PLUGINS_COUNT@//' \
             -e 's/@STATIC_LOADED_PLUGINS@//' \
             $(SRCS) > $@
-    """,
+    """.format(
+        ext_dir = EXTENSIONS_PLUGINS_DIR,
+        utype_dir = USER_TYPES_PLUGINS_DIR,
+    ),
 )
 
 cc_library(
@@ -116,10 +148,6 @@ cc_library(
     hdrs = glob([
         "src/*.h",
         "models/*.h",
-    ], exclude = [
-        "src/libyang.h",  # generated
-        "src/common.h",  # generated
-        "src/plugin_config.h",  # generated
     ]),
     includes = [
         "src",
@@ -129,16 +157,10 @@ cc_library(
         "-Wall",
         "-Wextra",
         "-fvisibility=hidden",
-        "-fPIC",
     ],
     local_defines = [
         "_GNU_SOURCE",
         "_FILE_OFFSET_BITS=64",
-    ],
-    linkopts = [
-        "-lm",
-        "-ldl",
-        "-lpthread",
     ],
     deps = [
         ":public_headers",
@@ -146,8 +168,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
 )
-
-# -- Shared library for runtime use --
 
 cc_shared_library(
     name = "libyang_shared",
@@ -278,3 +298,52 @@ cc_library(
 # The python3-yang debian package is built via SWIG from swig/python/.
 # To replicate this in Bazel, a custom rule similar to sdist_build_from_src
 # would be needed. Left as a placeholder.
+
+# -- Generated pkg-config file (needed by libyang-dev) --
+
+genrule(
+    name = "libyang_pc",
+    srcs = ["libyang.pc.in"],
+    outs = ["libyang.pc"],
+    cmd = """
+        sed -e 's|@CMAKE_INSTALL_PREFIX@|{prefix}|' \
+            -e 's|@CMAKE_INSTALL_INCLUDEDIR@|{includedir}|' \
+            -e 's|@CMAKE_INSTALL_LIBDIR@|{libdir}|' \
+            -e 's|@PROJECT_NAME@|libyang|' \
+            -e 's|@LIBYANG_DESCRIPTION@|{description}|' \
+            -e 's|@LIBYANG_VERSION@|{version}|' \
+            -e 's|@LIBYANG_SOVERSION_FULL@|{soversion}|' \
+            $(SRCS) > $@
+    """.format(
+        prefix = INSTALL_PREFIX,
+        includedir = INSTALL_INCLUDEDIR,
+        libdir = INSTALL_LIBDIR,
+        description = LIBYANG_DESCRIPTION,
+        version = LIBYANG_VERSION,
+        soversion = LIBYANG_SOVERSION_FULL,
+    ),
+)
+
+# -- deb packages --
+
+# libyang: runtime package
+# Contents: yanglint, yangre, man pages, shared library, extension/user_type plugins
+tar(
+    name = "libyang_pkg",
+    srcs = [
+        ":yanglint",
+        ":yangre",
+        ":libyang_shared",
+        "tools/lint/yanglint.1",
+        "tools/re/yangre.1",
+    ],
+    mtree = [
+        "./usr/bin/yanglint uid=0 gid=0 mode=0755 type=file content=$(location :yanglint)",
+        "./usr/bin/yangre uid=0 gid=0 mode=0755 type=file content=$(location :yangre)",
+        "./usr/share/man/man1/yanglint.1 uid=0 gid=0 mode=0644 type=file content=$(location tools/lint/yanglint.1)",
+        "./usr/share/man/man1/yangre.1 uid=0 gid=0 mode=0644 type=file content=$(location tools/re/yangre.1)",
+        "./{prefix}/{libdir}/libyang.so.{full} uid=0 gid=0 mode=0755 type=file content=$(location :libyang_shared)".format(prefix = INSTALL_PREFIX, libdir = INSTALL_LIBDIR, full = LIBYANG_SOVERSION_FULL),
+        "./{prefix}/{libdir}/libyang.so.{major} uid=0 gid=0 mode=0755 type=link link=libyang.so.{full}".format(prefix = INSTALL_PREFIX, libdir = INSTALL_LIBDIR, major = LIBYANG_MAJOR_SOVERSION, full = LIBYANG_SOVERSION_FULL),
+    ],
+    visibility = ["//visibility:public"],
+)
