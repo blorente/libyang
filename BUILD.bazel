@@ -163,7 +163,15 @@ cc_shared_library(
 
 # -- Extension plugins (shared objects loaded at runtime) --
 
-[cc_library(
+# TODO(bazel-ready): Make plugin lists configurable (e.g. via build settings)
+#   so consumers can choose which plugins to include.
+EXTENSION_PLUGINS = [
+    "nacm",
+    "metadata",
+    "yangdata",
+]
+
+[cc_binary(
     name = "ext_%s" % ext,
     srcs = ["src/extensions/%s.c" % ext],
     copts = [
@@ -172,17 +180,19 @@ cc_shared_library(
         "-Wextra",
         "-fPIC",
     ],
+    linkshared = 1,
     deps = [":libyang"],
     visibility = ["//visibility:public"],
-) for ext in [
-    "nacm",
-    "metadata",
-    "yangdata",
-]]
+) for ext in EXTENSION_PLUGINS]
 
 # -- User type plugins (shared objects loaded at runtime) --
 
-[cc_library(
+USER_TYPE_PLUGINS = [
+    "user_yang_types",
+    "user_inet_types",
+]
+
+[cc_binary(
     name = "utype_%s" % utype,
     srcs = ["src/user_types/%s.c" % utype],
     copts = [
@@ -191,12 +201,10 @@ cc_shared_library(
         "-Wextra",
         "-fPIC",
     ],
+    linkshared = 1,
     deps = [":libyang"],
     visibility = ["//visibility:public"],
-) for utype in [
-    "user_yang_types",
-    "user_inet_types",
-]]
+) for utype in USER_TYPE_PLUGINS]
 
 # -- CLI tools --
 
@@ -359,12 +367,26 @@ tar(
         ":yanglint",
         ":yangre",
         ":libyang_shared",
+    ] + [":ext_%s" % ext for ext in EXTENSION_PLUGINS] + [
+        ":utype_%s" % utype for utype in USER_TYPE_PLUGINS
     ],
     mtree = [
         "./usr/bin/yanglint uid=0 gid=0 mode=0755 type=file content=$(location :yanglint)",
         "./usr/bin/yangre uid=0 gid=0 mode=0755 type=file content=$(location :yangre)",
-        pkg_path("./{prefix}/{libdir}/libyang.so.{soversion_full} uid=0 gid=0 mode=0755 type=file content=$(location :libyang_shared)"),
-        pkg_path("./{prefix}/{libdir}/libyang.so.{soversion_major} uid=0 gid=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
+        pkg_path(".{prefix}/{libdir}/libyang.so.{soversion_full} uid=0 gid=0 mode=0755 type=file content=$(location :libyang_shared)"),
+        pkg_path(".{prefix}/{libdir}/libyang.so.{soversion_major} uid=0 gid=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
+    ] + [
+        pkg_path(
+            ".{prefix}/{libdir}/libyang/extensions/{ext}.so uid=0 gid=0 mode=0755 type=file content=$(location :ext_{ext})",
+            ext = ext,
+        )
+        for ext in EXTENSION_PLUGINS
+    ] + [
+        pkg_path(
+            ".{prefix}/{libdir}/libyang/user_types/{utype}.so uid=0 gid=0 mode=0755 type=file content=$(location :utype_{utype})",
+            utype = utype,
+        )
+        for utype in USER_TYPE_PLUGINS
     ],
     visibility = ["//visibility:public"],
 )
@@ -379,17 +401,17 @@ tar(
         ":libyang_h",
     ],
     mtree = [
-        pkg_path("./{prefix}/{libdir}/libyang.so uid=0 gid=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
-        pkg_path("./{prefix}/{libdir}/pkgconfig/libyang.pc uid=0 gid=0 mode=0644 type=file content=$(location :libyang_pc)"),
+        pkg_path(".{prefix}/{libdir}/libyang.so uid=0 gid=0 mode=0755 type=link link=libyang.so.{soversion_full}"),
+        pkg_path(".{prefix}/{libdir}/pkgconfig/libyang.pc uid=0 gid=0 mode=0644 type=file content=$(location :libyang_pc)"),
     ] + [
         pkg_path(
-            "./{prefix}/{includedir}/libyang/{hdr} uid=0 gid=0 mode=0644 type=file content=$(location {src})",
+            ".{prefix}/{includedir}/libyang/{hdr} uid=0 gid=0 mode=0644 type=file content=$(location {src})",
             hdr = hdr.split("/")[-1],
             src = hdr,
         )
         for hdr in PUBLIC_HEADERS
     ] + [
-        pkg_path("./{prefix}/{includedir}/libyang/libyang.h uid=0 gid=0 mode=0644 type=file content=$(location :libyang_h)"),
+        pkg_path(".{prefix}/{includedir}/libyang/libyang.h uid=0 gid=0 mode=0644 type=file content=$(location :libyang_h)"),
     ],
     visibility = ["//visibility:public"],
 )
