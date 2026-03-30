@@ -8,6 +8,11 @@ git_override(
     commit = "9b76e660363ab2465d89d3aadbbc1f7afa02e65c",
     remote = "https://github.com/bazel-contrib/tar.bzl",
 )
+bazel_dep(name = "sonic-build-infra", version = "0.0.0", repo_name = "sonic_build_infra")
+local_path_override(
+    module_name = "sonic-build-infra",
+    path = "../../sonic-net/sonic-build-infra",
+)
 bazel_dep(name = "rules_distroless", version = "0.0.0", repo_name = "rules_deb")
 local_path_override(
     module_name = "rules_distroless",
@@ -25,6 +30,10 @@ apt.sources_list(
 apt.install(
     dependency_set = "libyang_deps",
     suites = ["bookworm"],
-    packages = ["libpcre3-dev"],
+    packages = [
+        "libpcre3-dev",
+        "swig",
+        "python3-dev",
+    ],
 )
 use_repo(apt, "libyang_deps")

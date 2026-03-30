@@ -33,3 +33,12 @@ PUBLIC_HEADERS = [
     "src/user_types.h",
     "src/xml.h",
 ]
+
+# C++ binding headers from swig/CMakeLists.txt.
+CPP_SWIG_HEADERS = [
+    "swig/cpp/src/Internal.hpp",
+    "swig/cpp/src/Libyang.hpp",
+    "swig/cpp/src/Tree_Data.hpp",
+    "swig/cpp/src/Tree_Schema.hpp",
+    "swig/cpp/src/Xml.hpp",
+]
