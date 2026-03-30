@@ -415,3 +415,18 @@ tar(
     ],
     visibility = ["//visibility:public"],
 )
+
+# python3-yang: Python bindings package
+# Contents: SWIG-generated yang.py and _yang.so
+tar(
+    name = "python3-yang_pkg",
+    srcs = [
+        ":_yang_swig_lib",
+        "swig/python/yang.py",
+    ],
+    mtree = [
+        "./usr/lib/python3/dist-packages/_yang.so uid=0 gid=0 mode=0755 type=file content=$(location :_yang_swig_lib)",
+        "./usr/lib/python3/dist-packages/yang.py uid=0 gid=0 mode=0644 type=file content=$(location swig/python/yang.py)",
+    ],
+    visibility = ["//visibility:public"],
+)
